@@ -308,8 +308,8 @@ def interface():
                             'cap':1,
                             'floor':0
                         }
-                cap=1
-                floor=1
+                cap=None
+                floor= 0
                 data_cast['cap']=1
                 data_cast['floor']=0
 
