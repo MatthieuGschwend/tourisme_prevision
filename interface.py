@@ -864,10 +864,10 @@ sur des périodes, de respectivement:
                         
                 # Prévision
                 
-                prevision = st.checkbox('Afficher les prévisions')
+                prevision = st.sidebar.checkbox('Afficher les prévisions')
                 nb_semaines = 0
                 if prevision:
-                    nb_semaines = st.number_input(
+                    nb_semaines = st.sidebar.number_input(
                         "Horizon de prévision (en semaines) ",
                         min_value = 1, max_value = 16,value=4)
                         
