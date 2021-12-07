@@ -478,7 +478,7 @@ def graph_3_ans(data, pays, lissage=False, prevision = True, nb_semaines = 0):
             data_ = data_predict[(data_predict.index>=date1) & (data_predict.index<=date2)]
             if i == 0:
                 label_ = 'Prévision'
-                label_lisse = 'Prévision lissé'
+                label_lisse = 'Prévision lissée'
                 dates = [jlast+ d*timedelta(days=7) for d in range(len(data_))]
             else:
                 label_ = None
