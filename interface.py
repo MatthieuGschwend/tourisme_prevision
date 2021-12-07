@@ -6,12 +6,21 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import random
+import numpy as np
 from datetime import datetime, timedelta
 from scipy.signal import savgol_filter
 # from pydrive.auth import GoogleAuth
 # from pydrive.drive import GoogleDrive
 # from io import StringIO
 import os
+
+import pystan
+from fbprophet import Prophet
+
+
+
+
+
 # import base64
 # from pandas.plotting import table as pd_table
 # from pdflatex import PDFLaTeX
@@ -336,7 +345,6 @@ def tops_pays(recapitualif_x_semaines, fichier, str_top_semaine):
     
     return top_3_pays
 
-
 ### IV - GRAPHQUES
 
 def graph_barres(data, nom_x, nom_y, nom_z, formate_date=True):
@@ -400,7 +408,39 @@ def graph_barres(data, nom_x, nom_y, nom_z, formate_date=True):
 
     return fig
 
-def graph_3_ans(data, pays, lissage=False):
+def prevision_prophet(data,pays,nb_semaines = 4):
+    
+    date_fin = data.index[-1]
+    data_index = data[pays].index.name
+    data_cast = data.reset_index()[[data_index,pays]]
+    data_cast.columns = ['ds','y']
+    
+    
+    m = Prophet(seasonality_mode='additive',
+                daily_seasonality=False,
+                weekly_seasonality=False,
+                yearly_seasonality=True,
+                growth='linear',
+                changepoint_prior_scale = 0.1,
+                seasonality_prior_scale = 0.1,
+                changepoint_range=0.85)
+    
+    m = m.fit(data_cast)
+    
+    future = m.make_future_dataframe(nb_semaines,freq='W')
+    
+    future['cap']=0
+    future['floor'] = None
+    
+    forecast = m.predict(future)
+    
+    result = forecast[['ds', 'yhat']].copy()
+    result.columns = [data_index, pays]
+    result.set_index(data_index,inplace = True)    
+    result.index = result.index.map(lambda x: x.date())
+    return result
+    
+def graph_3_ans(data, pays, lissage=False, prevision = True, nb_semaines = 0):
     """Lissage avec le filtre de Savitzky-Golay . Il utilise les moindres 
     carrés pour régresser une petite fenêtre de vos données sur un polynôme, 
     puis utilise le polynôme pour estimer le point situé au centre de la 
@@ -409,14 +449,57 @@ def graph_3_ans(data, pays, lissage=False):
     ajusté de manière optimale par rapport à ses voisins. Cela fonctionne très 
     bien même avec des échantillons bruyants provenant de sources non 
     périodiques et non linéaires."""
-
+    
+    fig, ax = plt.subplots(figsize=(10,6), dpi=250)
     a = max(data.index).year
     j1 = data[data.index >= datetime(a, 1, 1).date()].index[0]
-    fig, ax = plt.subplots(figsize=(10,6), dpi=250)
+    jlast = data[data.index >= datetime(a, 1, 1).date()].index[-1]
+
+    # Si "prevision" est cochée on fait la prédiction 
+    if prevision == True : 
+        data_predict = prevision_prophet(data,pays,nb_semaines = nb_semaines)
+        annee_fin = data_predict.index[-1].year
+        
+        data_predict = data_predict[data_predict.index >= jlast]
+        data_predict.iloc[0] = data[pays].iloc[-1]
+        taille_predict = len(data_predict)
+        
+        
+        if lissage:
+            # on fait le raccord avec les vrais valeurs précédentes pour le lissage
+            data_lisse = np.concatenate((data[pays].values[:-1],data_predict[pays].values)\
+                                        ,axis = 0 )
+            data_predict['lisse'] = savgol_filter(data_lisse, 15, 3)[-taille_predict:]
+
+        for i in range(annee_fin - jlast.year + 1):
+            
+            date1, date2 = datetime(a+i, 1, 1).date(), datetime(a+i, 12, 31).date()
+            data_ = data_predict[(data_predict.index>=date1) & (data_predict.index<=date2)]
+            if i == 0:
+                label_ = 'Prévision'
+                label_lisse = 'Prévision lissé'
+                dates = [jlast+ d*timedelta(days=7) for d in range(len(data_))]
+            else:
+                label_ = None
+                label_lisse = None
+                dates = [j1+ d*timedelta(days=7) for d in range(len(data_))]
+                
+            y = data_[pays]
+
+            if lissage:
+                ylis = data_['lisse']
+                ax.plot(dates[1:], ylis[1:], 'o-', color='red', label=label_lisse)
+                ax.plot(dates, y, 'o-', color='red', label=label_, alpha=0.3)
+                
+            else:
+                ax.plot(dates, y, 'o-', color='red', label=label_)
+            
     for i in range(3):
         date1, date2 = datetime(a-i, 1, 1).date(), datetime(a-i, 12, 31).date()
         data_ = data[(data.index>date1) & (data.index<=date2)]
+        
         dates = [j1+int((date-date1).days/7.)*timedelta(days=7) for date in data_.index]
+        
         ligne  = ('o--' if i==0 else '.-')
         ligne2 = ('o:'  if i==0 else '.:')
         c = sns.color_palette("YlGnBu")[-i*2-1]
@@ -442,7 +525,7 @@ def graph_3_ans(data, pays, lissage=False):
            ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
             'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'],
            rotation=45) 
-
+        
     return fig
 
 
@@ -765,7 +848,7 @@ sur des périodes, de respectivement:
                 choix_destinations = {}
                 correspond_vol = {}
                 max_colonnes = 5
-                colonnes_volume = st.beta_columns(max_colonnes)
+                colonnes_volume = st.columns(max_colonnes)
                 index = 0  
                 place = 1
                 for destination in moyennes[nb_semaines_vol].index:
@@ -777,13 +860,23 @@ sur des périodes, de respectivement:
                     place += 1
                     if index == max_colonnes:
                         index = 0
+                        
+                # Prévision
+                
+                prevision = st.checkbox('Afficher les prévisions')
+                nb_semaines = 0
+                if prevision:
+                    nb_semaines = st.number_input(
+                        "Horizon de prévision (en semaines) ",
+                        min_value = 1, max_value = 16,value=4)
+                        
                 # Seules les graphiques des destinations choisies sont affichés
                 # choix_vol = st.multiselect("Choisissez les données à analyser:", correspond_vol)
                 
                 for zone in choix_destinations:
                     if choix_destinations[zone] == True:
-                        st.pyplot(graph_3_ans(data, zone, lissage))
-                
+                        st.pyplot(graph_3_ans(data, zone, lissage,prevision,nb_semaines))
+    
                 # for zone in correspond_vol:
                 #     if zone in choix_vol:
                 #         st.pyplot(graph_3_ans(data, correspond_vol[zone], lissage))
