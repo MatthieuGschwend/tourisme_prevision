@@ -436,7 +436,8 @@ def prevision_prophet(data,pays,nb_semaines = 4):
     
     result = forecast[['ds', 'yhat']].copy()
     result.columns = [data_index, pays]
-    result.set_index(data_index,inplace = True)    
+    result.set_index(data_index,inplace = True)
+    result[result < 0] = 0
     result.index = result.index.map(lambda x: x.date())
     return result
     
