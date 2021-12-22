@@ -459,7 +459,7 @@ def graph_3_ans(data, pays, lissage=False, prevision = True, nb_semaines = 0):
     # Si "prevision" est cochée on fait la prédiction 
     if prevision == True : 
         data_predict = prevision_prophet(data,pays,nb_semaines = nb_semaines)
-        st.write(data_predict[:-4])
+        st.write(data_predict[-4:])
         annee_fin = data_predict.index[-1].year
         
         data_predict = data_predict[data_predict.index >= jlast]
